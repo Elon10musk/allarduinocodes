@@ -14,6 +14,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);  // Set the LCD address and dimensions (chan
 #define CLK  33
 #define BUTTON_PIN 13
 #define BUZZER_PIN 12
+#define LED_PIN 14
 
 HX711 scale;
 
@@ -22,8 +23,8 @@ const char* BLYNK_TEMPLATE_NAME = "load cell";
 
 char auth[] = "KYY7zrOb7PaI99joDJ3v2qqt8BeKOCj_";  // Blynk authentication token
 // Define global variables to store SSID and password
-char ssid[32]="OnePlus";      
-char password[64]="8431748007";  
+char ssid[20]="OnePlus";      
+char password[20]="8431748007";  
 
 //use this if u don't want default values i.e shown above but make sure to comment the below 2 lines
 // char ssid[32];      
@@ -34,7 +35,7 @@ char password[64]="8431748007";
 const char * pop = "abcd1234"; // Proof of possession - otherwise called a PIN - string provided by the device, entered by user in the phone app
 const char * service_name = "PROV_ScaleBot"; // Name of your device (the Espressif apps expects by default device name starting with "Prov_")
 const char * service_key = NULL; // Password used for SofAP method (NULL = no password needed)
-bool reset_provisioned = true; // When true the library will automatically delete previously provisioned data.
+bool reset_provisioned = true; //make this true if u want to change wifi ssid and password even if it's connected to any network and false to use the first time connected network
 
 float calibration_factor = -96650;
 
@@ -168,7 +169,7 @@ void setup() {
   // Set up Wi-Fi network connection
   WiFi.mode(WIFI_STA);
   wifiMulti.addAP(ssid, password);
-  client.setCACert(TELEGRAM_CERTIFICATE_ROOT); // Add root certificate for api.telegram.org
+  client.setCACert(TELEGRAM_CERTIFICATE_ROOT);
 
   while (wifiMulti.run() != WL_CONNECTED) {
     Serial.print(".");
@@ -264,6 +265,7 @@ void myTimer() {
     Serial.print(weight, 3);
     Serial.println(" kg");
     checkThreshold(weight);  // Check if weight exceeds the threshold
+    checkUnderload(weight,thresholdWeight);  // Check for underload condition
 
     // Update LCD display
     lcd.setCursor(0, 0);
@@ -320,3 +322,21 @@ BLYNK_WRITE(V4) {
   lcd.print(thresholdWeight);
   lcd.print(" kg");
 }
+// Update LCD display with new underweight weight
+void checkUnderload(float weight,float thresholdWeight) {
+  if (weight < thresholdWeight) {
+    // Underload condition is met
+    float uweight = thresholdWeight - weight;
+    Serial.print("Underweight by or the remaining capacity to fill: ");
+    Serial.print(uweight);
+    Serial.println(" kg");
+    digitalWrite(LED_PIN, HIGH);  // Turn on the LED
+    Blynk.virtualWrite(V6, 1);  // Send underload alert to Blynk app (virtual pin V6)
+    Blynk.logEvent("alert", "Underload detected");
+  } else {
+    // Underload condition is not met
+    digitalWrite(LED_PIN, LOW);  // Turn off the LED
+    Blynk.virtualWrite(V6, 0);  // Clear underload alert in Blynk app (virtual pin V6)
+  }
+}
+
