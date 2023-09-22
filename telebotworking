@@ -1,0 +1,176 @@
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <HX711.h>
+#include <BlynkSimpleEsp32.h>
+
+// Replace with your network credentials
+const char* ssid = "OnePlus";
+const char* password = "8431748007";
+
+// Initialize Telegram BOT
+#define BOTtoken "6616164017:AAGWiCORRQJghTEd2ZCoEgFFFVDczD3F8WE"  // your Bot Token (Get from Botfather)
+
+// Use @myidbot to find out the chat ID of an individual or a group
+// Also note that you need to click "start" on a bot before it can
+// message you
+#define CHAT_ID "@ScaleMasterBot"
+
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOTtoken, client);
+
+HX711 scale;
+
+#define DOUT  32
+#define CLK  33
+#define BUTTON_PIN 13
+#define BUZZER_PIN 12
+
+char auth[] = "KYY7zrOb7PaI99joDJ3v2qqt8BeKOCj_";  // Blynk authentication token
+char blynkServer[] = "blynk-cloud.com";
+int blynkPort = 80;
+
+BlynkTimer timer;
+
+bool isScaleOn = true;  // Variable to track the scale on/off state
+bool prevWifiStatus = false;  // Previous Wi-Fi connection status
+bool prevScaleState = false;  // Previous scale state
+
+float thresholdWeight = 5.0;  // Default threshold weight in kg
+
+void handleTelegramMessages() {
+  int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+  
+  while (numNewMessages) {
+    Serial.println("New message(s) received");
+    
+    for (int i = 0; i < numNewMessages; i++) {
+      String chat_id = String(bot.messages[i].chat_id);
+      String text = bot.messages[i].text;
+      
+      if (text == "/start") {
+        bot.sendMessage(chat_id, "Let's boot up.");
+      }
+      else if (text.startsWith("/setthreshold")) {
+        text.remove(0, 13); // Remove "/setthreshold" from the message
+        thresholdWeight = text.toFloat();
+        bot.sendMessage(chat_id, "Threshold set to " + String(thresholdWeight) + " kg");
+      }
+      else if (text == "/status") {
+        String statusMessage = "Scale is " + String(isScaleOn ? "ON" : "OFF") + "\n";
+        statusMessage += "Current threshold: " + String(thresholdWeight) + " kg";
+        bot.sendMessage(chat_id, statusMessage);
+      }
+      else if (text == "/tare") {
+        scale.tare();
+        bot.sendMessage(chat_id, "Tared");
+      }
+      else if (text == "/On") {
+        isScaleOn = true;
+        bot.sendMessage(chat_id, "Scale turned ON");
+      }
+      else if (text == "/Off") {
+        isScaleOn = false;
+        bot.sendMessage(chat_id, "Scale turned OFF");
+      }
+    }
+    numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize the HX711 instance with the pin numbers
+  scale.begin(DOUT, CLK);
+  scale.set_scale(-96650);
+  scale.tare();
+
+  // Set up Wi-Fi network connection
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  client.setCACert(TELEGRAM_CERTIFICATE_ROOT); // Add root certificate for api.telegram.org
+
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  // Initialize Blynk
+  Blynk.config(auth, blynkServer, blynkPort);
+  Blynk.connect();
+
+  // Configure timer to read weight and sync with Blynk every second
+  timer.setInterval(1000L, myTimer);
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  // Initialize threshold weight from Blynk app or default value
+  Blynk.syncVirtual(V4);
+  
+  bot.sendMessage(CHAT_ID, "Bot started up", "");
+}
+
+void loop() {
+  Blynk.run();
+  timer.run();
+  handleTelegramMessages(); // Check for and process Telegram messages
+}
+
+void myTimer() {
+  if (prevWifiStatus && isScaleOn) {
+    float weight = scale.get_units(10);
+    Serial.print("Weight: ");
+    Serial.print(weight, 3);
+    Serial.println(" kg");
+    checkThreshold(weight);
+  }
+}
+
+void checkThreshold(float weight) {
+  if (weight >= thresholdWeight) {
+    digitalWrite(BUZZER_PIN, HIGH);
+    Blynk.virtualWrite(V5, 1);
+  } else {
+    digitalWrite(BUZZER_PIN, LOW);
+    Blynk.virtualWrite(V5, 0);
+  }
+}
+
+BLYNK_WRITE(V1) {
+  if (param.asInt() == 1) {
+    scale.tare();
+    Serial.println("Tared");
+  }
+}
+
+BLYNK_READ(V2) {
+  if (prevWifiStatus && isScaleOn) {
+    float weight = scale.get_units(10);
+    Blynk.virtualWrite(V2, weight);
+  } else {
+    Blynk.virtualWrite(V2, 0);
+  }
+}
+
+BLYNK_WRITE(V3) {
+  int buttonState = param.asInt();
+  if (buttonState == 1) {
+    isScaleOn = true;
+  } else {
+    isScaleOn = false;
+  }
+}
+
+BLYNK_WRITE(V4) {
+  thresholdWeight = param.asFloat();
+  Serial.print("New threshold weight set to: ");
+  Serial.print(thresholdWeight);
+  Serial.println(" kg");
+}
