@@ -1,3 +1,5 @@
+//just bot
+
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include "HX711.h"
@@ -23,8 +25,8 @@ char auth[] = "KYY7zrOb7PaI99joDJ3v2qqt8BeKOCj_";  // Blynk authentication token
 char blynkServer[] = "blynk-cloud.com";
 int blynkPort = 80;
 
-char ssid[] = "vivo 1818";   // WiFi SSID
-char password[] = "123456789";  // WiFi password
+char ssid[] = "OnePlus";   // WiFi SSID
+char password[] = "8431748007";  // WiFi password
 
 float calibration_factor = -96650;
 
