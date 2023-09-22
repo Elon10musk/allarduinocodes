@@ -1,5 +1,3 @@
-//just bot
-
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include "HX711.h"
@@ -22,9 +20,6 @@ const char* BLYNK_TEMPLATE_ID = "TMPL3UWKXwkbf";
 const char* BLYNK_TEMPLATE_NAME = "load cell";
 
 char auth[] = "KYY7zrOb7PaI99joDJ3v2qqt8BeKOCj_";  // Blynk authentication token
-char blynkServer[] = "blynk-cloud.com";
-int blynkPort = 80;
-
 char ssid[] = "OnePlus";   // WiFi SSID
 char password[] = "8431748007";  // WiFi password
 
@@ -79,7 +74,6 @@ void handleTelegramMessages() {
   }
 }
 
-
 void setup() {
   Serial.begin(115200);
   Serial.println("Press T to tare");
@@ -89,16 +83,12 @@ void setup() {
   scale.set_scale(-96650);
   scale.tare();
 
-  Blynk.begin(auth, ssid, password);  // Connect to Blynk using WiFi and Template
-  Blynk.config(auth, blynkServer, blynkPort);
-  Blynk.connect();
-
   // Set up Wi-Fi network connection
   WiFi.mode(WIFI_STA);
   wifiMulti.addAP(ssid, password);
   client.setCACert(TELEGRAM_CERTIFICATE_ROOT); // Add root certificate for api.telegram.org
 
-  while (WiFi.status() != WL_CONNECTED) {
+  while (wifiMulti.run() != WL_CONNECTED) {
     Serial.print(".");
     delay(500);
   }
@@ -121,6 +111,8 @@ void setup() {
   lcd.print(thresholdWeight);
   lcd.print(" kg");
 
+  // Initialize Blynk
+  Blynk.begin(auth, ssid, password);
 }
 
 void loop() {
