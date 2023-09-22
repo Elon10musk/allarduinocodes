@@ -14,6 +14,7 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);  // Set the LCD address and dimensions (chan
 #define CLK  33
 #define BUTTON_PIN 13
 #define BUZZER_PIN 12
+#define LED_PIN 14
 
 HX711 scale;
 
@@ -55,6 +56,7 @@ bool prevScaleState = false;  // Previous scale state
 
 float thresholdWeight = 10.0;  // Default threshold weight in kg
 float weight = 0.0;
+float uweight=thresholdWeight;
 
 void SysProvEvent(arduino_event_t *sys_event)
 {
@@ -117,7 +119,8 @@ void handleTelegramMessages() {
       else if (text == "/status") {
         String statusMessage = "Scale is " + String(isScaleOn ? "ON" : "OFF") + "\n";      
         statusMessage += "Current Weight: " + String(weight, 3) + " kg\n";
-        statusMessage += "Current threshold: " + String(thresholdWeight) + " kg";
+        statusMessage += "Current threshold: " + String(thresholdWeight) + " kg\n";
+        statusMessage += "Currently UnderWeight By: " + String(uweight, 3) + " kg\n";
         bot.sendMessage(chat_id, statusMessage);
         Serial.println(statusMessage);
       }
@@ -264,6 +267,7 @@ void myTimer() {
     Serial.print(weight, 3);
     Serial.println(" kg");
     checkThreshold(weight);  // Check if weight exceeds the threshold
+    checkUnderload(weight,thresholdWeight);  // Check for underload condition
 
     // Update LCD display
     lcd.setCursor(0, 0);
@@ -320,11 +324,22 @@ BLYNK_WRITE(V4) {
   lcd.print(thresholdWeight);
   lcd.print(" kg");
 }
-BLYNK_READ(V6) {
-    if (weight != thresholdWeight) {
-    Blynk.virtualWrite(V6, 1);
+// Update LCD display with new underweight weight
+void checkUnderload(float weight,float thresholdWeight) {
+  if (weight < thresholdWeight) {
+    // Underload condition is met
+    uweight = thresholdWeight - weight;
     Serial.print("Underweight by or the remaining capacity to fill: ");
-    float uweight=thresholdWeight-weight; 
-    Serial.println(uweight);
-    }
+    Serial.print(uweight);
+    Serial.println(" kg");
+    digitalWrite(LED_PIN, HIGH);  // Turn on the LED
+    Blynk.virtualWrite(V6, 1);  // Send underload alert to Blynk app (virtual pin V6)
+    Blynk.logEvent("alert", "Underload detected");
+  } else {
+    // Underload condition is not met
+    digitalWrite(LED_PIN, LOW);  // Turn off the LED
+    Blynk.virtualWrite(V6, 0);  // Clear underload alert in Blynk app (virtual pin V6)
+    uweight = 0; //if value goes above threshold value
+  }
 }
+
