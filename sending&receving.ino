@@ -1,12 +1,13 @@
-//node 1 code sending :-
 #include "painlessMesh.h"
 #include <ArduinoJson.h>
 
-#define MESH_PREFIX     "whateverYouLike"
-#define MESH_PASSWORD   "somethingSneaky"
+#define MESH_PREFIX     "ScaleBot"
+#define MESH_PASSWORD   "12345678"
 #define MESH_PORT       5555
 
 painlessMesh mesh;
+
+String nodenum = "_1"; 
 
 int meshid = mesh.getNodeId();
 #define meshId meshid   // Store the mesh ID of this node
@@ -15,18 +16,18 @@ Scheduler userScheduler; // to control your personal task
 // User stubs
 void sendJsonData();
 
-Task taskSendJsonData(TASK_SECOND * 1 , TASK_FOREVER, &sendJsonData);
-//Task taskSendJsonData(10 * TASK_MINUTE, TASK_FOREVER, &sendJsonData);
+Task taskSendJsonData(1 * TASK_SECOND, TASK_FOREVER, &sendJsonData);
 
 void sendJsonData() {
   // Create a JSON document
   StaticJsonDocument<256> jsonDocument;
   
   // Add sensor data to the JSON document
-  jsonDocument["meshID"] = mesh.getNodeId();
-  jsonDocument["weight+meshId"] = 888;
-  jsonDocument["threshold+meshId"] = 90;
-
+  jsonDocument["nodenum"] = nodenum;
+  jsonDocument["weight"+nodenum] = 888;
+  jsonDocument["thresholdVal"+nodenum] = 90;
+  jsonDocument["UnderloadVal"+nodenum] = 0.444;
+  jsonDocument["OverloadVal"+nodenum] = 1.077;
   // Serialize the JSON document to a string
   String jsonString;
   serializeJson(jsonDocument, jsonString);
@@ -34,7 +35,7 @@ void sendJsonData() {
   // Send JSON data over the mesh
   mesh.sendBroadcast(jsonString);
 
-  taskSendJsonData.setInterval( random( TASK_SECOND * 1, TASK_SECOND * 5 ));  // Send data every 10 (minutes 10 * TASK_MINUTE)
+  taskSendJsonData.setInterval(1 * TASK_SECOND);  // Send data every 10 minutes
 }
 
 // Needed for painless library
@@ -53,7 +54,6 @@ void changedConnectionCallback() {
 void nodeTimeAdjustedCallback(int32_t offset) {
     Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(),offset);
 }
-
 void setup() {
   Serial.begin(115200);
 
@@ -77,13 +77,14 @@ void loop() {
   userScheduler.execute();
 }
 
+
 //node 2 receiving :-
 //.................................................................................................................................................................................................
 #include "painlessMesh.h"
 #include <ArduinoJson.h>
 
-#define MESH_PREFIX     "whateverYouLike"
-#define MESH_PASSWORD   "somethingSneaky"
+#define MESH_PREFIX     "ScaleBot"
+#define MESH_PASSWORD   "12345678"
 #define MESH_PORT       5555
 
 painlessMesh mesh;
@@ -107,13 +108,17 @@ void receivedCallback(uint32_t from, String &msg) {
   }
 
   // Extract and print specific values from the JSON data
-  int meshID = jsonDocument["meshID"];
-  int weight = jsonDocument["weight+meshId"];
-  int threshold = jsonDocument["threshold+meshId"];
+  int nodenum = jsonDocument["nodenum"];
+  int weight = jsonDocument["weight_1"];
+  int threshold = jsonDocument["threshold_1"];
+  float Underload = jsonDocument["Underloadval_1"];
+  float Overload = jsonDocument["Overloadval_1"];
 
-  Serial.printf("Mesh ID: %d\n", meshID);
+  Serial.printf("Mesh ID: %d\n", nodenum);
   Serial.printf("Weight: %d\n", weight);
   Serial.printf("Threshold: %d\n", threshold);
+  Serial.printf("Underload by: %f\n", Underload);
+  Serial.printf("Overload by: %f\n", Overload);
 }
 
 void setup() {
