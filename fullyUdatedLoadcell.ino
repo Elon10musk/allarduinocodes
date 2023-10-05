@@ -9,13 +9,16 @@
 #include <BlynkSimpleEsp32.h>
 #include "painlessMesh.h"
 #include <ArduinoJson.h> 
-
+//....................................................<painlessMesh_init>.........................................
 #define MESH_PREFIX     "whateverYouLike"
 #define MESH_PASSWORD   "somethingSneaky"
 #define MESH_PORT       5555
-
+painlessMesh mesh;
+//................................................................................................................
+//....................................................<LCD_Init>..................................................
 LiquidCrystal_I2C lcd(0x27, 16, 2);  // Set the LCD address and dimensions (change address if necessary)
-
+//................................................................................................................
+//...........................................<HX711_Pins_&_led&buzz pin>..........................................
 #define DOUT 32
 #define CLK 33
 #define BUTTON_PIN 13
@@ -24,38 +27,31 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);  // Set the LCD address and dimensions (chan
 
 HX711 scale;
 
-painlessMesh mesh;
-
+float calibration_factor = -9111;
+float thresholdWeight = 10.0;  // Default threshold weight 10 in kg
+float weight = 0.0;
+float uweight = thresholdWeight;
+//..................................................................................................................
+//.................................................<Blynk_init>.....................................................
 const char *BLYNK_TEMPLATE_ID = "TMPL3UWKXwkbf";
 const char *BLYNK_TEMPLATE_NAME = "load cell";
 
 char auth[] = "KYY7zrOb7PaI99joDJ3v2qqt8BeKOCj_";  // Blynk authentication token
-// Define global variables to store SSID and password
-
-char ssid[20] = "OnePlus";
-char password[20] = "8431748007";
-
-float calibration_factor = -9111;
-
-// Initialize Telegram BOT
+BlynkTimer timer;
+//..................................................................................................................
+//............................................<Initialize Telegram BOT>.............................................
 #define BOTtoken "6616164017:AAGWiCORRQJghTEd2ZCoEgFFFVDczD3F8WE"
 #define CHAT_ID "@ScaleMasterBot"
 
 WiFiClientSecure client;
 UniversalTelegramBot bot(BOTtoken, client);
-
+//..................................................................................................................
 WiFiMulti wifiMulti;
-
-BlynkTimer timer;
 
 bool isScaleOn = true;        // Variable to track the scale on/off state
 bool prevWifiStatus = false;  // Previous Wi-Fi connection status
 bool prevScaleState = false;  // Previous scale state
-
-float thresholdWeight = 10.0;  // Default threshold weight 10 in kg
-float weight = 0.0;
-float uweight = thresholdWeight;
-
+//.........................................<telegram_msg_handling>..................................................
 void handleTelegramMessages() {
   int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
 
@@ -85,10 +81,10 @@ void handleTelegramMessages() {
     numNewMessages = bot.getUpdates(bot.last_message_received + 1);
   }
 }
-
+//................................................................................................................
 void setup() {
     Serial.begin(115200);
-//........................................................................................................................................
+//....................................................<wifiManager_init>..........................................
   // Create an instance of WiFiManager
   WiFiManager wm;
 
@@ -107,14 +103,11 @@ void setup() {
 
   Blynk.config(auth);
   Blynk.connect();
-//..........................................................................................................................................
+//................................................................................................................
 
-  // Initialize PainlessMesh................................................
-    mesh.init(MESH_PREFIX, MESH_PASSWORD, MESH_PORT);
-    mesh.setDebugMsgTypes(ERROR | STARTUP | CONNECTION);
-    mesh.onReceive(&receivedCallback);
-    mesh.setContainsRoot(true); // Set this node as a root node
-  //.........................................................................  
+//.........................................Initialize PainlessMesh................................................
+
+//................................................................................................................ 
   Serial.println("Press T to tare");
   lcd.init();
   scale.begin(DOUT, CLK);  // Initialize the HX711 instance with the pin numbers
@@ -128,8 +121,9 @@ void setup() {
   // Set up Wi-Fi network connection
   WiFi.mode(WIFI_STA);
   //wifiMulti.addAP(ssid, password);
+  //.................................................................telegram.......................
   client.setCACert(TELEGRAM_CERTIFICATE_ROOT);
-
+  //................................................................................................
   // Configure timer to read weight and sync with Blynk every second
   timer.setInterval(1000L, myTimer);
 
@@ -142,7 +136,7 @@ void setup() {
   lcd.begin(16, 2);  // Initialize the LCD display
   lcd.backlight();   // Turn on the backlight
   lcd.setCursor(0, 0);
-  lcd.print("Weight:Init..");
+  lcd.print("Weight:Init...");
   lcd.setCursor(0, 1);
   lcd.print("Threshold: ");
   lcd.print(thresholdWeight);
@@ -153,10 +147,9 @@ void setup() {
 void loop() {
   Blynk.run();
   timer.run();
-  mesh.update();
   handleTelegramMessages();  // Check and process Telegram messages
   // Check if there is any data available to read from the serial monitor
-  if (Serial.available()) {  //==0.....................................................................................
+  if (Serial.available()) {
     char input = Serial.read();
 
     // Perform actions based on the user input
@@ -215,7 +208,7 @@ void loop() {
 void myTimer() {
   if (prevWifiStatus && isScaleOn) {
     weight = scale.get_units();
-    if (weight < 0) { scale.tare();weight = scale.get_units(); }  //..........................................Need to check if it works...........................................
+    if (weight < 0) { scale.tare();weight = scale.get_units(); }//..........................................Need to check if it works...........................................
     Serial.print("Weight:");
     Serial.print(weight, 3);
     Serial.println("kg");
@@ -277,7 +270,7 @@ BLYNK_WRITE(V4) {
   lcd.print(thresholdWeight);
   lcd.print("kg");
 }
-// Update LCD display with new underweight weight
+//.........................................<Update display with new underweight weight>..................................
 void checkUnderload(float weight, float thresholdWeight) {
   if (weight < thresholdWeight) {
     // Underload condition is met
@@ -294,30 +287,4 @@ void checkUnderload(float weight, float thresholdWeight) {
     Blynk.virtualWrite(V6, 0);   // Clear underload alert in Blynk app (virtual pin V6)
     uweight = 0;                 //if value goes above threshold value
   }
-}
-
-void receivedCallback(uint32_t from, String &msg) {
-    Serial.printf("Received from %u msg=%s\n", from, msg.c_str());
-
-    // Parse the received JSON data
-    DynamicJsonDocument jsonDocument(1024); // Adjust the buffer size as needed
-    DeserializationError error = deserializeJson(jsonDocument, msg);
-
-    // Check for parsing errors
-    if (error) {
-        Serial.print("Failed to parse JSON: ");
-        Serial.println(error.c_str());
-        return;
-    }
-
-    // Extract and print the data from the JSON document
-    uint32_t meshID = jsonDocument["meshID"];
-    float weightPlusMeshID = jsonDocument["weight+meshId"];
-    float thresholdPlusMeshID = jsonDocument["threshold+meshId"];
-
-    Serial.printf("Mesh ID: %u\n", meshID);
-    Serial.printf("Weight+Mesh ID: %.2f\n", weightPlusMeshID);
-    Serial.printf("Threshold+Mesh ID: %.2f\n", thresholdPlusMeshID);
-
-    // You can further process or use the extracted data as needed
 }
